@@ -1,0 +1,217 @@
+<!-- SMART EDUCATION ADMIN PANEL - Updated -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMART EDUCATION ADMIN PANEL</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- SweetAlert -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+  body { font-family: 'Poppins', sans-serif; background: #0f172a; color: white; }
+  .card { background: rgba(0,0,0,0.5); backdrop-filter: blur(15px); border-radius: 15px; padding: 20px; }
+  table { min-width: 100%; }
+  th, td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.2); }
+  th { background: #38bdf8; color: black; }
+  td button { padding: 5px 10px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+  input, select { background: rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.3); }
+  input:focus, select:focus { outline:none; box-shadow:0 0 10px #38bdf8; border:1px solid #38bdf8; }
+  .loading { text-align:center; padding:20px; color:#38bdf8; }
+  .no-data { text-align:center; padding:20px; color:#f87171; }
+</style>
+</head>
+<body class="p-6">
+
+<div class="text-center mb-6">
+  <h1 class="text-3xl font-bold text-cyan-400">SMART EDUCATION ADMIN PANEL</h1>
+  <p class="mt-2 text-gray-300">Manage SMS Registrations for Ajira, NECTA Results, NACTVET Updates, HESLB Loans & Scholarships</p>
+</div>
+
+<!-- Dashboard Stats -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="card text-center">
+    <h2 class="text-lg font-bold">Total Registrations</h2>
+    <p id="totalRegs" class="text-2xl mt-2">0</p>
+  </div>
+  <div class="card text-center">
+    <h2 class="text-lg font-bold">Ajira</h2>
+    <p id="totalAjira" class="text-2xl mt-2">0</p>
+  </div>
+  <div class="card text-center">
+    <h2 class="text-lg font-bold">NECTA Results</h2>
+    <p id="totalNecta" class="text-2xl mt-2">0</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="flex flex-col md:flex-row gap-4 mb-4">
+  <input type="text" id="searchInput" placeholder="Search by Name, Phone, Email" class="flex-1">
+  <select id="filterRegion">
+    <option value="">All Regions</option>
+    <option>Dar es Salaam</option><option>Dodoma</option><option>Arusha</option><option>Mwanza</option>
+    <option>Mbeya</option><option>Morogoro</option><option>Tanga</option><option>Iringa</option>
+    <option>Kilimanjaro</option><option>Shinyanga</option><option>Kagera</option><option>Tabora</option>
+    <option>Ruvuma</option><option>Singida</option><option>Lindi</option><option>Mtwara</option>
+    <option>Geita</option><option>Simiyu</option><option>Njombe</option><option>Katavi</option>
+    <option>Manyara</option><option>Songwe</option>
+  </select>
+  <select id="filterCategory">
+    <option value="">All Categories</option>
+    <option>Ajira</option>
+    <option>Matokeo (NECTA)</option>
+    <option>Vyuo & NACTVET</option>
+    <option>Mikopo (HESLB)</option>
+    <option>Scholarships</option>
+    <option>Zote</option>
+  </select>
+  <button id="exportCSV" class="bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded px-4 py-2">Export CSV</button>
+</div>
+
+<!-- Registrations Table -->
+<div class="overflow-x-auto">
+  <table class="table-auto bg-black/30 rounded-lg">
+    <thead>
+      <tr>
+        <th>Reg No</th>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>Region</th>
+        <th>Category</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="regTableBody">
+      <tr class="loading"><td colspan="7">Loading registrations...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, doc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCdQE1-XXfhlVUle_95CGqKT45QthG5c4E",
+  authDomain: "smart-atendance-reg.firebaseapp.com",
+  projectId: "smart-atendance-reg",
+  storageBucket: "smart-atendance-reg.firebasestorage.app",
+  messagingSenderId: "696246534236",
+  appId: "1:696246534236:web:a1a6ea8faf759d75ac6699",
+  measurementId: "G-Y2XFN8LM24"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const ref = collection(db,"smsRegistrations");
+
+const regTableBody = document.getElementById("regTableBody");
+const totalRegs = document.getElementById("totalRegs");
+const totalAjira = document.getElementById("totalAjira");
+const totalNecta = document.getElementById("totalNecta");
+const searchInput = document.getElementById("searchInput");
+const filterRegion = document.getElementById("filterRegion");
+const filterCategory = document.getElementById("filterCategory");
+const exportCSV = document.getElementById("exportCSV");
+
+let allData = [];
+
+// Render table row
+function renderRow(docData, docId){
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${docData.regNumber}</td>
+    <td>${docData.name}</td>
+    <td>${docData.phone}</td>
+    <td>${docData.email}</td>
+    <td>${docData.region}</td>
+    <td>${docData.category}</td>
+    <td>
+      <button class="bg-red-600 hover:bg-red-500 text-white" data-id="${docId}">Delete</button>
+    </td>
+  `;
+  tr.querySelector("button").addEventListener("click", async ()=>{
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: `Delete ${docData.name}'s registration?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete!',
+    });
+    if(result.isConfirmed){
+      await deleteDoc(doc(db,"smsRegistrations",docId));
+      Swal.fire('Deleted!','Registration has been deleted.','success');
+    }
+  });
+  return tr;
+}
+
+// Filter & search
+function applyFilters(){
+  const search = searchInput.value.toLowerCase();
+  const region = filterRegion.value;
+  const category = filterCategory.value;
+  regTableBody.innerHTML = "";
+
+  let filtered = allData.filter(d=>{
+    return (!region || d.data.region === region) &&
+           (!category || d.data.category === category) &&
+           (d.data.name.toLowerCase().includes(search) || d.data.phone.includes(search) || d.data.email.toLowerCase().includes(search));
+  });
+
+  if(filtered.length === 0){
+    const tr = document.createElement("tr");
+    tr.classList.add("no-data");
+    tr.innerHTML = `<td colspan="7">No registrations found</td>`;
+    regTableBody.appendChild(tr);
+    return;
+  }
+
+  filtered.forEach(d=>{
+    regTableBody.appendChild(renderRow(d.data,d.id));
+  });
+}
+
+// Export CSV
+exportCSV.addEventListener("click", ()=>{
+  if(!allData.length) return alert("No data to export");
+  let csv = "Reg No,Name,Phone,Email,Region,Category\n";
+  allData.forEach(d=>{
+    csv += `"${d.data.regNumber}","${d.data.name}","${d.data.phone}","${d.data.email}","${d.data.region}","${d.data.category}"\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "registrations.csv";
+  link.click();
+});
+
+// Load Realtime Data
+onSnapshot(ref,(snapshot)=>{
+  allData = [];
+  snapshot.forEach(docSnap=>{
+    allData.push({id: docSnap.id, data: docSnap.data()});
+  });
+
+  totalRegs.textContent = allData.length;
+  totalAjira.textContent = allData.filter(d=>d.data.category==="Ajira").length;
+  totalNecta.textContent = allData.filter(d=>d.data.category==="Matokeo (NECTA)").length;
+
+  applyFilters();
+});
+
+// Event listeners
+searchInput.addEventListener("input", applyFilters);
+filterRegion.addEventListener("change", applyFilters);
+filterCategory.addEventListener("change", applyFilters);
+
+</script>
+
+</body>
+</html>

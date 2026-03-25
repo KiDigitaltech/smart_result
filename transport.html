@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="sw">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IDADI YA WANAFAMILIA WATAKAOSAFIRI KUELEKEA MOSHI KUTOKEA DAR ES SALAAM</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1abc9c, #16a085);
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      text-align: center;
+      padding: 25px 10px;
+      font-size: 28px;
+      background: rgba(0,0,0,0.2);
+      margin: 0;
+    }
+    .count {
+      text-align: center;
+      font-size: 20px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    form {
+      max-width: 500px;
+      margin: 20px auto;
+      background: rgba(255,255,255,0.1);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      transition: transform 0.3s;
+    }
+    form.animate {
+      transform: scale(1.05);
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+    }
+    input:focus {
+      outline: none;
+      box-shadow: 0 0 5px #fff;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      margin-top: 10px;
+      font-size: 18px;
+      background: #e67e22;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.3s, transform 0.3s;
+    }
+    button:hover {
+      background: #d35400;
+      transform: scale(1.05);
+    }
+    table {
+      width: 90%;
+      margin: 20px auto 50px auto;
+      border-collapse: collapse;
+      background: rgba(255,255,255,0.1);
+    }
+    table, th, td {
+      border: 1px solid #fff;
+    }
+    th, td {
+      padding: 12px;
+      text-align: center;
+    }
+    th {
+      background: rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+<h1>IDADI YA WANAFAMILIA WATAKAOSAFIRI KUELEKEA MOSHI KUTOKEA DAR ES SALAAM</h1>
+<div class="count">Jumla ya Watakaosafiri: <span id="totalCount">0</span></div>
+
+<form id="travelForm">
+  <input type="text" id="name" placeholder="Jina Kamili" required>
+  <input type="tel" id="phone" placeholder="Namba ya Simu" required>
+  <button type="submit">Jiandikishe</button>
+</form>
+
+<table id="travelersTable">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Jina</th>
+      <th>Namba ya Simu</th>
+      <th>Muda wa Kujiandikisha</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Wasajili wote watatokea hapa -->
+  </tbody>
+</table>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBp4M1HvXQtDURFLiUft-yRGGNhm3BPjB4",
+    authDomain: "smartcollect-94fed.firebaseapp.com",
+    projectId: "smartcollect-94fed",
+    storageBucket: "smartcollect-94fed.firebasestorage.app",
+    messagingSenderId: "934601828160",
+    appId: "1:934601828160:web:328de1daaf67beb7363ca5"
+  };
+
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const form = document.getElementById('travelForm');
+  const tableBody = document.querySelector('#travelersTable tbody');
+  const totalCountEl = document.getElementById('totalCount');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    form.classList.add('animate');
+
+    const name = document.getElementById('name').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+
+    if(!name || !phone){
+      Swal.fire('Kosa!', 'Tafadhali jaza zote fields.', 'error');
+      return;
+    }
+
+    try {
+      // Check for duplicate
+      const querySnapshot = await db.collection('travelers')
+        .where('name', '==', name)
+        .where('phone', '==', phone)
+        .get();
+
+      if(!querySnapshot.empty){
+        Swal.fire('Kumbuka!', 'Familia hii tayari imejisajili.', 'warning');
+        return;
+      }
+
+      // Add new traveler
+      await db.collection('travelers').add({
+        name,
+        phone,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Usajili umefanikiwa!',
+        text: `${name} amesajiliwa kwa safari ya Moshi.`,
+        timer: 2500,
+        showConfirmButton: false
+      });
+
+      form.reset();
+    } catch (error) {
+      console.error(error);
+      Swal.fire('Kosa!', 'Kuna tatizo, jaribu tena.', 'error');
+    } finally {
+      setTimeout(() => form.classList.remove('animate'), 300);
+    }
+  });
+
+  // Display travelers and total count
+  const displayTravelers = () => {
+    db.collection('travelers').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+      tableBody.innerHTML = "";
+      let count = 1;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const row = document.createElement('tr');
+        const time = data.timestamp ? data.timestamp.toDate().toLocaleString() : '-';
+        row.innerHTML = `
+          <td>${count}</td>
+          <td>${data.name}</td>
+          <td>${data.phone}</td>
+          <td>${time}</td>
+        `;
+        tableBody.appendChild(row);
+        count++;
+      });
+      totalCountEl.textContent = snapshot.size;
+    });
+  }
+
+  displayTravelers();
+</script>
+
+</body>
+</html>

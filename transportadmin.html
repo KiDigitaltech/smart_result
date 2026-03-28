@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="sw">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - Usajili wa Wasafiri</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.5/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f4f6f8; }
+    h1 { text-align: center; margin-bottom: 20px; }
+    table { width: 100%; background: #fff; }
+    button.edit, button.delete { padding: 5px 10px; margin: 2px; border: none; border-radius: 5px; cursor: pointer; }
+    button.edit { background: #3498db; color: #fff; }
+    button.delete { background: #e74c3c; color: #fff; }
+    .export-btns { margin-bottom: 15px; }
+    .export-btns button { margin-right: 10px; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; background: #1abc9c; color: #fff; }
+  </style>
+</head>
+<body>
+
+<h1>Admin Panel - Usajili wa Wasafiri</h1>
+
+<div class="export-btns">
+  <button id="exportExcel">Export to Excel</button>
+  <button id="exportPDF">Export to PDF</button>
+</div>
+
+<table id="travelersTable" class="display">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Jina</th>
+      <th>Namba ya Simu</th>
+      <th>Muda wa Usajili</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.5/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyBp4M1HvXQtDURFLiUft-yRGGNhm3BPjB4",
+    authDomain: "smartcollect-94fed.firebaseapp.com",
+    projectId: "smartcollect-94fed",
+    storageBucket: "smartcollect-94fed.firebasestorage.app",
+    messagingSenderId: "934601828160",
+    appId: "1:934601828160:web:328de1daaf67beb7363ca5"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let table;
+
+  const fetchTravelers = () => {
+    db.collection('travelers').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+      const tbody = $('#travelersTable tbody');
+      tbody.empty();
+      let count = 1;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const time = data.timestamp ? data.timestamp.toDate().toLocaleString() : '-';
+        const row = $(`
+          <tr>
+            <td>${count}</td>
+            <td>${data.name}</td>
+            <td>${data.phone}</td>
+            <td>${time}</td>
+            <td>
+              <button class="edit" data-id="${doc.id}">Edit</button>
+              <button class="delete" data-id="${doc.id}">Delete</button>
+            </td>
+          </tr>
+        `);
+        tbody.append(row);
+        count++;
+      });
+
+      // Initialize DataTable after adding rows
+      if ($.fn.DataTable.isDataTable('#travelersTable')) {
+        table.destroy();
+      }
+      table = $('#travelersTable').DataTable();
+    });
+  }
+
+  fetchTravelers();
+
+  // Edit entry
+  $(document).on('click', '.edit', async function(){
+    const id = $(this).data('id');
+    const docRef = db.collection('travelers').doc(id);
+    const doc = await docRef.get();
+    const data = doc.data();
+    const { value: formValues } = await Swal.fire({
+      title: 'Edit Wasafiri',
+      html:
+        `<input id="swal-name" class="swal2-input" placeholder="Jina Kamili" value="${data.name}">` +
+        `<input id="swal-phone" class="swal2-input" placeholder="Namba ya Simu" value="${data.phone}">`,
+      focusConfirm: false,
+      preConfirm: () => {
+        return [
+          document.getElementById('swal-name').value.trim(),
+          document.getElementById('swal-phone').value.trim()
+        ]
+      }
+    });
+    if(formValues){
+      const [name, phone] = formValues;
+      if(!name || !phone){
+        Swal.fire('Error','Tafadhali jaza zote fields','error');
+        return;
+      }
+      await docRef.update({name, phone});
+      Swal.fire('Success','Entry imebadilishwa','success');
+    }
+  });
+
+  // Delete entry
+  $(document).on('click', '.delete', function(){
+    const id = $(this).data('id');
+    Swal.fire({
+      title: 'Unataka kufuta entry hii?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ndiyo, Futa',
+      cancelButtonText: 'Hapana'
+    }).then(async (result) => {
+      if(result.isConfirmed){
+        await db.collection('travelers').doc(id).delete();
+        Swal.fire('Imefutwa','Entry imeondolewa','success');
+      }
+    });
+  });
+
+  // Export to Excel
+  $('#exportExcel').click(async () => {
+    const snapshot = await db.collection('travelers').orderBy('timestamp','desc').get();
+    const data = snapshot.docs.map(doc => ({
+      Jina: doc.data().name,
+      'Namba ya Simu': doc.data().phone,
+      'Muda wa Usajili': doc.data().timestamp ? doc.data().timestamp.toDate().toLocaleString() : ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Wasafiri");
+    XLSX.writeFile(wb, "Wasafiri.xlsx");
+  });
+
+  // Export to PDF
+  $('#exportPDF').click(async () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const snapshot = await db.collection('travelers').orderBy('timestamp','desc').get();
+    const data = snapshot.docs.map((doc, i) => [
+      i+1,
+      doc.data().name,
+      doc.data().phone,
+      doc.data().timestamp ? doc.data().timestamp.toDate().toLocaleString() : ''
+    ]);
+    doc.autoTable({
+      head: [['#','Jina','Namba ya Simu','Muda wa Usajili']],
+      body: data
+    });
+    doc.save("Wasafiri.pdf");
+  });
+</script>
+<!-- Include jsPDF AutoTable plugin -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+</body>
+</html>

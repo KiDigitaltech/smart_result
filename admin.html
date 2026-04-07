@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel | PDF Links</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<style>
+:root{
+  --primary:#0a5ad6;
+  --bg:#f4f6fb;
+  --dark:#1f2937;
+}
+body{
+  margin:0;
+  font-family:Segoe UI,Tahoma,sans-serif;
+  background:var(--bg);
+}
+.container{
+  max-width:1100px;
+  margin:auto;
+  padding:16px;
+}
+.card{
+  background:#fff;
+  border-radius:14px;
+  padding:20px;
+  box-shadow:0 10px 25px rgba(0,0,0,.08);
+  margin-bottom:20px;
+}
+h1,h2{margin-top:0;color:var(--primary)}
+label{font-weight:600;margin-top:12px;display:block}
+input{
+  width:100%;
+  padding:12px;
+  margin-top:6px;
+  border-radius:8px;
+  border:1px solid #ddd;
+}
+button{
+  padding:12px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:600;
+  transition:all .3s;
+}
+button:hover{opacity:.9}
+.btn-primary{background:var(--primary);color:#fff;width:100%;margin-top:15px}
+.btn-edit{background:#e6efff;color:var(--primary)}
+.btn-delete{background:#fee2e2;color:#b91c1c}
+.btn-cancel{background:#e5e7eb}
+.actions{display:flex;gap:6px}
+
+/* LIST */
+.list{
+  display:grid;
+  gap:12px;
+}
+.item{
+  background:#fafafa;
+  padding:14px;
+  border-radius:10px;
+}
+.item h3{margin:0 0 4px;font-size:16px}
+.meta{font-size:13px;color:#555}
+.item-actions{display:flex;gap:8px;margin-top:8px}
+
+/* LOADING */
+.loading{
+  position:fixed;
+  inset:0;
+  background:rgba(255,255,255,.7);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+.spinner{
+  width:45px;height:45px;
+  border:5px solid #ddd;
+  border-top:5px solid var(--primary);
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* MODAL */
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.6);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+.modal-box{
+  background:#fff;
+  width:90%;
+  max-width:420px;
+  border-radius:12px;
+  padding:20px;
+}
+.modal-actions{display:flex;gap:10px;margin-top:15px}
+
+/* LOGIN */
+#loginCard{
+  max-width:400px;
+  margin:80px auto;
+}
+</style>
+</head>
+<body>
+
+<div class="loading" id="loading"><div class="spinner"></div></div>
+
+<!-- LOGIN -->
+<div class="container" id="loginPage">
+  <div class="card" id="loginCard">
+    <h1>Admin Login</h1>
+    <form id="loginForm">
+      <label>Email</label>
+      <input id="loginEmail" type="email" required>
+      <label>Password</label>
+      <input id="loginPassword" type="password" required>
+      <button class="btn-primary" type="submit">Log In</button>
+    </form>
+  </div>
+</div>
+
+<!-- MAIN PANEL -->
+<div class="container" id="mainPanel" style="display:none">
+
+  <!-- FORM -->
+  <div class="card">
+    <h1>Admin – Save PDF Link</h1>
+    <form id="pdfForm">
+      <input type="hidden" id="docId">
+
+      <label>PDF Title</label>
+      <input id="title" required>
+
+      <label>PDF URL</label>
+      <input id="pdfUrl" type="url" required>
+
+      <label>Date of Announcement</label>
+      <input id="date" type="date" required>
+
+      <button class="btn-primary" type="submit">Save PDF</button>
+    </form>
+    <button style="margin-top:10px;background:#f87171;color:white" onclick="logout()">Log Out</button>
+  </div>
+
+  <!-- LIST -->
+  <div class="card">
+    <h2>Saved PDFs</h2>
+    <div id="list" class="list"></div>
+  </div>
+
+</div>
+
+<!-- DELETE MODAL -->
+<div class="modal" id="confirmModal">
+  <div class="modal-box">
+    <h3>Delete PDF?</h3>
+    <p>Hii PDF itafutwa kabisa.</p>
+    <div class="modal-actions">
+      <button class="btn-delete" onclick="confirmDelete()">Delete</button>
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Firebase */
+firebase.initializeApp({
+  apiKey:"AIzaSyBC7ulr6UcN5AdpYmdlACsv-oQ1_k7o1d8",
+  authDomain:"placements-309df.firebaseapp.com",
+  projectId:"placements-309df"
+});
+const auth=firebase.auth();
+const db=firebase.firestore();
+
+/* Helpers */
+const loading=document.getElementById("loading");
+let deleteId=null;
+
+function showLoading(s){loading.style.display=s?"flex":"none"}
+
+/* LOGIN */
+const loginPage=document.getElementById("loginPage");
+const mainPanel=document.getElementById("mainPanel");
+const loginForm=document.getElementById("loginForm");
+
+loginForm.onsubmit=async e=>{
+  e.preventDefault();
+  showLoading(true);
+  const email=document.getElementById("loginEmail").value;
+  const password=document.getElementById("loginPassword").value;
+  try{
+    await auth.signInWithEmailAndPassword(email,password);
+    Swal.fire({icon:'success',title:'Login Successful',timer:1500,showConfirmButton:false});
+    loginPage.style.display="none";
+    mainPanel.style.display="block";
+    initPDFList();
+  }catch(err){
+    Swal.fire({icon:'error',title:'Login Failed',text:err.message});
+  }
+  showLoading(false);
+}
+
+/* LOGOUT */
+function logout(){
+  auth.signOut().then(()=>{
+    mainPanel.style.display="none";
+    loginPage.style.display="block";
+    Swal.fire({icon:'info',title:'Logged Out',timer:1200,showConfirmButton:false});
+  });
+}
+
+/* CHECK LOGIN STATE */
+auth.onAuthStateChanged(user=>{
+  if(user){
+    loginPage.style.display="none";
+    mainPanel.style.display="block";
+    initPDFList();
+  }else{
+    loginPage.style.display="block";
+    mainPanel.style.display="none";
+  }
+});
+
+/* SAVE / UPDATE PDF */
+const pdfForm=document.getElementById("pdfForm");
+pdfForm.onsubmit=async e=>{
+  e.preventDefault();
+  showLoading(true);
+  const id=document.getElementById("docId").value;
+  const t=document.getElementById("title").value;
+  const url=document.getElementById("pdfUrl").value;
+  const d=document.getElementById("date").value;
+  const dt=new Date(d);
+  const data={
+    title:t,
+    pdfUrl:url,
+    date:d,
+    month:String(dt.getMonth()+1).padStart(2,'0'),
+    year:String(dt.getFullYear()),
+    timestamp:firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try{
+    if(id){
+      await db.collection("employment_pdfs").doc(id).update(data);
+      Swal.fire({icon:'success',title:'Updated Successfully',timer:1500,showConfirmButton:false});
+    }else{
+      await db.collection("employment_pdfs").add(data);
+      Swal.fire({icon:'success',title:'Saved Successfully',timer:1500,showConfirmButton:false});
+    }
+    pdfForm.reset(); document.getElementById("docId").value="";
+  }catch(err){
+    Swal.fire({icon:'error',title:'Error',text:err.message});
+  }
+  showLoading(false);
+};
+
+/* RENDER LIST */
+function initPDFList(){
+  const list=document.getElementById("list");
+  db.collection("employment_pdfs").orderBy("timestamp","desc")
+    .onSnapshot(s=>{
+      list.innerHTML="";
+      s.forEach(d=>{
+        const i=d.data();
+        list.innerHTML+=`
+        <div class="item">
+          <h3>${i.title}</h3>
+          <div class="meta">${i.date}</div>
+          <div class="item-actions">
+            <button class="btn-edit" onclick="editPDF('${d.id}','${i.title}','${i.pdfUrl}','${i.date}')">Edit</button>
+            <button class="btn-delete" onclick="askDelete('${d.id}')">Delete</button>
+          </div>
+        </div>`;
+      });
+    });
+}
+
+/* EDIT */
+function editPDF(id,t,u,d){
+  document.getElementById("docId").value=id;
+  document.getElementById("title").value=t;
+  document.getElementById("pdfUrl").value=u;
+  document.getElementById("date").value=d;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* DELETE */
+function askDelete(id){
+  deleteId=id;
+  document.getElementById("confirmModal").style.display="flex";
+}
+function closeConfirm(){
+  document.getElementById("confirmModal").style.display="none";
+  deleteId=null;
+}
+async function confirmDelete(){
+  showLoading(true);
+  try{
+    await db.collection("employment_pdfs").doc(deleteId).delete();
+    Swal.fire({icon:'success',title:'Deleted Successfully',timer:1500,showConfirmButton:false});
+  }catch(err){
+    Swal.fire({icon:'error',title:'Error',text:err.message});
+  }
+  showLoading(false);
+  closeConfirm();
+}
+</script>
+
+</body>
+</html>
